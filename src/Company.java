@@ -20,15 +20,15 @@ public class Company {
 
         init();
 
-        jaap.start();
+//        jaap.start();
 
         for (Customer customer : customers) {
             customer.start();
         }
 
-        for (Developer developer : devs) {
-            developer.start();
-        }
+//        for (Developer developer : devs) {
+//            developer.start();
+//        }
 
     }
 
@@ -116,7 +116,9 @@ public class Company {
 
                     try {
                         // Klant wacht op uitnodiging van Jaap, en reist naar bedrijf
+                        System.out.println("Trying to acquire invitation!");
                         invitationToCompany.acquire();
+                        System.out.println("This shouldnt ever be printed?");
                         travelToCompany();
 
                         // Klant voegt zichzelf toe aan lijst met op locatie wachtende klanten, mutex voor kritieke actie
