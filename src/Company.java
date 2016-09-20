@@ -8,12 +8,11 @@ public class Company {
 
     private static final int NR_OF_CUSTOMERS = 10;
     private static final int NR_OF_DEVS = 6;
-    private int customersWithProblem;
-    private Semaphore freeDev, freeJaap, invitationToCompany, invitationForMeeting, counterMutex, listMutex;
+    private int customersWithProblem, waitingCustomers;
+    private Semaphore freeDev, freeJaap, invitationToCompany, invitationForMeeting, counterMutex;
     private Developer[] devs;
     private Customer[] customers;
     private Jaap jaap;
-    private ArrayList<Customer> waitingCustomers;
     private CountDownLatch readyForMeeting, startMeeting, waitForEndOFMeeting, endMeeting;
 
     public void run() {
@@ -38,13 +37,12 @@ public class Company {
         freeJaap = new Semaphore(0, true);
         invitationToCompany = new Semaphore(0, true);
         counterMutex = new Semaphore(1);
-        listMutex = new Semaphore(1);
         invitationForMeeting = new Semaphore(0, true);
 
         jaap = new Jaap();
 
-        waitingCustomers = new ArrayList<>();
         customersWithProblem = 0;
+        waitingCustomers = 0;
 
         devs = new Developer[NR_OF_DEVS];
         for (int i = 0; i < NR_OF_DEVS; i++) {
@@ -66,7 +64,7 @@ public class Company {
         }
     }
 
-    public class Developer extends Thread {
+    private class Developer extends Thread {
 
         @Override
         public void run() {
@@ -76,15 +74,53 @@ public class Company {
                 // Dev meldt 'regelmatig' dat hij besschikbaar is voor overleg
                 // Als Jaap in overleg is gaat de dev weer aan het werk
                 // Als Jaap niet in overleg is, gaat hij wachten op uitnodiging voor overleg
-                // Als Jaap gaat overleggen, nodigt hij genoeg devs uit, als een dev wel aan het wachten was voor overleg maar wordt niet uitgenodigd, gaat deze weer aan het werk
+                // Als Jaap gaat overleggen, nodigt hij genoeg devs uit, als een dev wel aan het wachten was voor overleg maar wordt niet uitgenodigd,
+                //      gaat deze weer aan het werk
                 // Wordt hij wel uitgenodigd --> Wacht tot iedereen zit, wacht tot overleg klaar is, ga weer aan het werk
+
+                // Dev checked of Jaap beschikbaar is
+                if(freeJaap.tryAcquire()){
+                    // Als jaap beschikbaar is, released de dev zichzelf en wordt zo beschikbaar via de semafoor
+                    freeDev.release();
+                    // Jaap wordt weer vrijgegeven zodat hij anderen kan helpen
+                    freeJaap.release();
+
+                    // Dev gaat wachten op uitnodiging voor een overleg
+                    try {
+                        invitationForMeeting.acquire();
+                        // Meld dat hij klaar is om te beginnen
+                        readyForMeeting.countDown();
+                        // Gaat wachten op begin meeting
+                        startMeeting.await();
+                        // Woon meeting bij
+                        attendMeeting();
+                        // Meld klaar te zijn voor afsluiting van de meeting
+                        waitForEndOFMeeting.countDown();
+                        // Wacht op einde van de meeting
+                        endMeeting.await();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+
+                } else {
+                    doSomeWork();
+                }
 
             }
 
         }
+
+        private void doSomeWork(){
+            try {
+                Thread.sleep(15000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
-    public class Customer extends Thread {
+    private class Customer extends Thread {
 
         @Override
         public void run() {
@@ -102,8 +138,8 @@ public class Company {
                 // Bepaal of er een probleem is
                 double problemOrNo = Math.random();
 
-                // Als er een probleem is (3% kans per cycle):
-                if (problemOrNo <= 0.03) {
+                // Als er een probleem is:
+                if (problemOrNo <= 0.01) {
                     try {
                         // Verhoog aantal wachtende klanten met 1, mutex voor kritieke actie
                         counterMutex.acquire();
@@ -116,15 +152,13 @@ public class Company {
 
                     try {
                         // Klant wacht op uitnodiging van Jaap, en reist naar bedrijf
-                        System.out.println("Trying to acquire invitation!");
                         invitationToCompany.acquire();
-                        System.out.println("This shouldnt ever be printed?");
                         travelToCompany();
 
                         // Klant voegt zichzelf toe aan lijst met op locatie wachtende klanten, mutex voor kritieke actie
-                        listMutex.acquire();
-                        waitingCustomers.add((Customer) Thread.currentThread());
-                        listMutex.release();
+                        counterMutex.acquire();
+                        waitingCustomers++;
+                        counterMutex.release();
 
                         // Wachtende klant wacht op sein dat het overleg gaat beginnen
                         invitationForMeeting.acquire();
@@ -133,8 +167,7 @@ public class Company {
                         readyForMeeting.countDown();
                         // Gaat wachten op begin meeting
                         startMeeting.await();
-                        // Woon meeting bij
-                        attendMeeting();
+
                         // Meld klaar te zijn voor afsluiting van de meeting
                         waitForEndOFMeeting.countDown();
                         // Wacht op einde van de meeting
@@ -160,7 +193,7 @@ public class Company {
 
     }
 
-    public class Jaap extends Thread {
+    private class Jaap extends Thread {
 
         @Override
         public void run() {
@@ -168,11 +201,12 @@ public class Company {
             while (true) {
 
                 // Jaap probeert een dev te aquiren voor overleg {dus sleep wanneer geen beschikbaar}
-                // if(waitingCustomers.size() > 0){
+                // if(waitingCustomers > 0){
                 //      freeDev.aquire();
                 //      overleg met klanten
                 // } else {
-                //      freeDev.aquire(3);
+                //
+
                 //      overleg met devs
             }
 
